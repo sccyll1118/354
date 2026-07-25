@@ -15,8 +15,6 @@
  *       단순 DLL 로딩 및 DXGI export 전달만 수행
  */
 
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
 #include <Windows.h>
 #include <dxgi.h>
 #include <dxgi1_2.h>

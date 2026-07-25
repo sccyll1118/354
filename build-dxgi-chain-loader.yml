@@ -1,0 +1,115 @@
+name: Build ETS2 DXGI Chain Loader
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'src/**'
+      - 'ETS2DxgiChainLoader.vcxproj'
+      - 'ETS2DxgiChainLoader.def'
+      - '.github/workflows/build-dxgi-chain-loader.yml'
+
+jobs:
+  build:
+    name: Windows x64 Release
+    runs-on: windows-latest
+
+    steps:
+      # ── 1. 저장소 체크아웃 ──────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. MSBuild 경로 자동 탐색 ───────────────────────────────────────
+      - name: Find MSBuild
+        id: msbuild
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) {
+            Write-Error "vswhere.exe not found"
+            exit 1
+          }
+          $vsPath = & $vswhere -latest -requires Microsoft.Component.MSBuild -property installationPath
+          if (-not $vsPath) {
+            Write-Error "Visual Studio installation not found"
+            exit 1
+          }
+          $msbuild = Join-Path $vsPath "MSBuild\Current\Bin\MSBuild.exe"
+          if (-not (Test-Path $msbuild)) {
+            Write-Error "MSBuild.exe not found at: $msbuild"
+            exit 1
+          }
+          Write-Host "MSBuild: $msbuild"
+          "msbuild_path=$msbuild" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      # ── 3. Release x64 빌드 ─────────────────────────────────────────────
+      - name: Build Release|x64
+        shell: pwsh
+        run: |
+          $msbuild  = "${{ steps.msbuild.outputs.msbuild_path }}"
+          $project  = "ETS2DxgiChainLoader.vcxproj"
+
+          Write-Host "=== Building $project ==="
+          & $msbuild $project `
+            /p:Configuration=Release `
+            /p:Platform=x64 `
+            /p:PlatformToolset=v143 `
+            /p:WindowsTargetPlatformVersion=10.0 `
+            /m `
+            /v:normal `
+            /bl:build.binlog 2>&1
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host ""
+            Write-Host "=== BUILD FAILED — 오류 로그 ==="
+            exit $LASTEXITCODE
+          }
+          Write-Host "=== BUILD SUCCEEDED ==="
+
+      # ── 4. 결과 파일 확인 ───────────────────────────────────────────────
+      - name: Verify output
+        shell: pwsh
+        run: |
+          $output = "build\dxgi.dll"
+          if (-not (Test-Path $output)) {
+            Write-Error "Output not found: $output"
+            if (Test-Path "build") {
+              Get-ChildItem "build" | ForEach-Object { Write-Host "  $_" }
+            }
+            exit 1
+          }
+          $size = (Get-Item $output).Length
+          Write-Host "Output OK: $output ($size bytes)"
+
+      # ── 5. Artifact 패키징 ──────────────────────────────────────────────
+      #   dxgi.dll + dxgi_chain.ini + README.md 를 함께 패키징
+      - name: Prepare artifact folder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifact -Force | Out-Null
+          Copy-Item "build\dxgi.dll"    artifact\dxgi.dll
+          Copy-Item "dxgi_chain.ini"    artifact\dxgi_chain.ini
+          Copy-Item "README.md"         artifact\README.md
+          Write-Host "Artifact contents:"
+          Get-ChildItem artifact | ForEach-Object { Write-Host "  $($_.Name) ($($_.Length) bytes)" }
+
+      # ── 6. Artifact 업로드 ──────────────────────────────────────────────
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ETS2-DXGI-Chain-Loader
+          path: artifact/
+          if-no-files-found: error
+
+      # ── 7. 빌드 실패 시 binlog 업로드 ───────────────────────────────────
+      - name: Upload build log on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-log-failure
+          path: build.binlog
+          if-no-files-found: ignore

@@ -15,6 +15,7 @@
 #include <dxgi1_2.h>
 #include <dxgi1_3.h>
 #include "dxgi_proxy.h"
+#include <cstdio>
 
 // ─── 함수 포인터 타입 정의 ───────────────────────────────────────────────────
 

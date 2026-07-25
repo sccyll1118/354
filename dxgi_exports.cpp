@@ -8,7 +8,8 @@
  *
  * 로그: CreateDXGIFactory 계열은 어느 DLL로 전달됐는지 기록
  */
-
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <Windows.h>
 #include <dxgi.h>
 #include <dxgi1_2.h>
